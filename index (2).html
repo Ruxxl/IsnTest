@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ISN Test AI — QA Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080b10;
+    --surface: #0d1117;
+    --surface2: #161b22;
+    --surface3: #1f2937;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --text3: #484f58;
+    --accent: #f0883e;
+    --accent2: #79c0ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --yellow: #e3b341;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Outfit', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+  /* Noise overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: 0.4;
+  }
+
+  .page { position: relative; z-index: 1; }
+
+  /* ── VIEWS ── */
+  .view { display: none; min-height: 100vh; }
+  .view.active { display: flex; flex-direction: column; }
+
+  /* ── HEADER ── */
+  .hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 40px; height: 60px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(8,11,16,0.85);
+    backdrop-filter: blur(12px);
+    position: sticky; top: 0; z-index: 50;
+  }
+  .hdr-logo {
+    font-family: var(--mono);
+    font-size: 14px; font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--accent);
+  }
+  .hdr-logo span { color: var(--text2); }
+  .btn-back {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--text2);
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 7px 14px;
+    cursor: pointer;
+    font-family: var(--sans);
+    transition: all 0.2s;
+  }
+  .btn-back:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ── HOME ── */
+  #view-home {
+    padding: 80px 40px;
+    flex-direction: column;
+    align-items: center;
+  }
+  .home-hero { text-align: center; margin-bottom: 72px; }
+  .home-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--accent); background: rgba(240,136,62,0.1);
+    border: 1px solid rgba(240,136,62,0.25);
+    padding: 5px 14px; border-radius: 20px;
+    margin-bottom: 28px;
+  }
+  .home-hero h1 {
+    font-size: clamp(36px, 5vw, 64px);
+    font-weight: 800; line-height: 1.1;
+    letter-spacing: -2px;
+    margin-bottom: 18px;
+  }
+  .home-hero h1 em { font-style: normal; color: var(--accent); }
+  .home-hero p {
+    font-size: 17px; color: var(--text2);
+    max-width: 480px; margin: 0 auto;
+    line-height: 1.7; font-weight: 300;
+  }
+
+  .modules-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    max-width: 1000px;
+    width: 100%;
+  }
+  @media (max-width: 768px) { .modules-grid { grid-template-columns: 1fr; } }
+
+  .module-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  .module-card::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: var(--glow, transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .module-card:hover { transform: translateY(-4px); border-color: var(--border2); }
+  .module-card:hover::before { opacity: 1; }
+
+  .module-card[data-id="gen"] { --glow: radial-gradient(ellipse at 0% 0%, rgba(240,136,62,0.08), transparent 60%); }
+  .module-card[data-id="jira"] { --glow: radial-gradient(ellipse at 0% 0%, rgba(121,192,255,0.08), transparent 60%); }
+  .module-card[data-id="tms"] { --glow: radial-gradient(ellipse at 0% 0%, rgba(63,185,80,0.08), transparent 60%); }
+
+  .module-icon {
+    width: 52px; height: 52px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+  .module-card[data-id="gen"] .module-icon { background: rgba(240,136,62,0.12); }
+  .module-card[data-id="jira"] .module-icon { background: rgba(121,192,255,0.12); }
+  .module-card[data-id="tms"] .module-icon { background: rgba(63,185,80,0.12); }
+
+  .module-num {
+    position: absolute; top: 20px; right: 20px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text3); letter-spacing: 1px;
+  }
+  .module-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .module-card p { font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .module-arrow {
+    margin-top: 24px; font-size: 20px; color: var(--text3);
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 600;
+    transition: color 0.2s, gap 0.2s;
+  }
+  .module-card:hover .module-arrow { color: var(--text); gap: 10px; }
+  .module-card[data-id="gen"]:hover .module-arrow { color: var(--accent); }
+  .module-card[data-id="jira"]:hover .module-arrow { color: var(--accent2); }
+  .module-card[data-id="tms"]:hover .module-arrow { color: var(--green); }
+
+  /* ── SHARED MODULE LAYOUT ── */
+  .module-body { flex: 1; display: flex; flex-direction: column; }
+  .module-wrap { flex: 1; max-width: 1100px; width: 100%; margin: 0 auto; padding: 40px; }
+
+  .module-title {
+    font-size: 26px; font-weight: 800; letter-spacing: -0.5px;
+    margin-bottom: 6px;
+  }
+  .module-sub { font-size: 14px; color: var(--text2); margin-bottom: 36px; }
+
+  /* ── INPUTS ── */
+  .label { font-size: 12px; color: var(--text2); font-weight: 500; margin-bottom: 6px; display: block; letter-spacing: 0.5px; text-transform: uppercase; }
+  .inp {
+    width: 100%; background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 10px; padding: 11px 14px;
+    color: var(--text); font-family: var(--sans); font-size: 14px;
+    outline: none; transition: border-color 0.2s;
+  }
+  .inp:focus { border-color: var(--accent); }
+  .inp::placeholder { color: var(--text3); }
+  textarea.inp { resize: vertical; min-height: 130px; line-height: 1.6; }
+  select.inp { cursor: pointer; }
+  select.inp option { background: var(--surface2); }
+
+  /* ── BUTTONS ── */
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 24px; border-radius: 10px;
+    background: var(--accent); color: #fff;
+    font-family: var(--sans); font-size: 14px; font-weight: 600;
+    border: none; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .btn-primary.blue { background: var(--accent2); color: #0d1117; }
+  .btn-primary.green { background: var(--green); }
+
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 8px;
+    background: transparent; color: var(--text2);
+    border: 1px solid var(--border2);
+    font-family: var(--sans); font-size: 13px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--border2); background: var(--surface2); }
+
+  /* ── CARD ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px;
+  }
+
+  /* ── LOADER ── */
+  .loader {
+    display: inline-block; width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    padding: 12px 20px; border-radius: 10px;
+    font-size: 14px; font-weight: 500;
+    z-index: 999;
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+    display: flex; align-items: center; gap: 10px;
+    max-width: 400px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.error { background: rgba(248,81,73,0.15); border: 1px solid rgba(248,81,73,0.3); color: var(--red); }
+  .toast.success { background: rgba(63,185,80,0.15); border: 1px solid rgba(63,185,80,0.3); color: var(--green); }
+  .toast.info { background: rgba(121,192,255,0.12); border: 1px solid rgba(121,192,255,0.25); color: var(--accent2); }
+
+  /* ── TAG BADGE ── */
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--mono); font-size: 11px;
+    padding: 3px 10px; border-radius: 6px;
+  }
+  .tag.orange { background: rgba(240,136,62,0.12); color: var(--accent); }
+  .tag.blue { background: rgba(121,192,255,0.12); color: var(--accent2); }
+  .tag.green { background: rgba(63,185,80,0.12); color: var(--green); }
+  .tag.red { background: rgba(248,81,73,0.12); color: var(--red); }
+  .tag.purple { background: rgba(188,140,255,0.12); color: var(--purple); }
+  .tag.yellow { background: rgba(227,179,65,0.12); color: var(--yellow); }
+
+  /* ══════════════════════════
+     MODULE 1: TEST CASE GEN
+  ══════════════════════════ */
+  .gen-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 900px) { .gen-grid { grid-template-columns: 1fr; } }
+
+  .gen-options {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin-top: 12px;
+  }
+  .gen-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--surface2); border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 13px; color: var(--text2);
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .gen-toggle:hover { border-color: var(--border2); }
+  .gen-toggle input { display: none; }
+  .gen-toggle.on { color: var(--text); border-color: rgba(240,136,62,0.3); }
+
+  .tog-dot {
+    width: 32px; height: 18px;
+    border: 1px solid var(--border2);
+    border-radius: 10px; background: var(--bg);
+    position: relative; transition: all 0.2s;
+  }
+  .tog-dot::after {
+    content: ''; position: absolute;
+    left: 2px; top: 2px;
+    width: 12px; height: 12px;
+    background: var(--text3); border-radius: 50%;
+    transition: all 0.2s;
+  }
+  .gen-toggle.on .tog-dot { background: rgba(240,136,62,0.2); border-color: rgba(240,136,62,0.5); }
+  .gen-toggle.on .tog-dot::after { left: 16px; background: var(--accent); }
+
+  .result-area {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    min-height: 400px;
+    display: flex; flex-direction: column;
+  }
+  .result-hdr {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .result-hdr-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .result-body { flex: 1; padding: 18px; overflow-y: auto; }
+
+  /* TC card in gen */
+  .tc {
+    border: 1px solid var(--border);
+    border-radius: 10px; margin-bottom: 12px;
+    overflow: hidden;
+    animation: fadeUp 0.3s ease both;
+  }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .tc-hdr {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px;
+    cursor: pointer;
+    background: var(--surface);
+    transition: background 0.15s;
+  }
+  .tc-hdr:hover { background: var(--surface3); }
+  .tc-id-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(240,136,62,0.1); padding: 2px 8px; border-radius: 5px; flex-shrink: 0; }
+  .tc-name-text { flex: 1; font-size: 13px; font-weight: 600; }
+  .tc-chevron { color: var(--text3); font-size: 12px; transition: transform 0.2s; }
+  .tc.open .tc-chevron { transform: rotate(180deg); }
+  .tc-bd { display: none; padding: 16px; background: var(--bg); border-top: 1px solid var(--border); gap: 12px; flex-direction: column; }
+  .tc.open .tc-bd { display: flex; }
+  .tc-field-label { font-family: var(--mono); font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .tc-field-val { font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .tc-expected-box { background: rgba(63,185,80,0.07); border: 1px solid rgba(63,185,80,0.2); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--green); line-height: 1.5; }
+  .tc-steps-list { display: flex; flex-direction: column; gap: 6px; }
+  .tc-step { display: flex; gap: 10px; font-size: 13px; color: var(--text2); }
+  .tc-step-num { min-width: 20px; height: 20px; background: var(--surface2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+
+  .empty-result {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; color: var(--text3); text-align: center; padding: 40px;
+  }
+  .empty-icon { font-size: 40px; opacity: 0.5; }
+
+  /* ══════════════════════════
+     MODULE 2: JIRA MONITOR
+  ══════════════════════════ */
+  .jira-layout {
+    display: grid; grid-template-columns: 280px 1fr; gap: 24px;
+  }
+  @media (max-width: 900px) { .jira-layout { grid-template-columns: 1fr; } }
+
+  .jira-sidebar {
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .jira-filters { display: flex; flex-direction: column; gap: 10px; }
+
+  .releases-list { display: flex; flex-direction: column; gap: 8px; }
+  .release-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .release-item:hover { border-color: var(--border2); }
+  .release-item.active { border-color: rgba(121,192,255,0.4); }
+  .release-hdr {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px;
+  }
+  .release-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .release-name { font-size: 13px; font-weight: 600; flex: 1; }
+  .release-count { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+  .release-chevron { font-size: 11px; color: var(--text3); transition: transform 0.2s; }
+  .release-item.open .release-chevron { transform: rotate(90deg); }
+
+  .release-issues { display: none; padding: 0 8px 8px; gap: 4px; flex-direction: column; }
+  .release-item.open .release-issues { display: flex; }
+
+  .issue-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .issue-row:hover { background: var(--surface2); }
+  .issue-row.active { background: rgba(121,192,255,0.08); }
+  .issue-key { font-family: var(--mono); font-size: 11px; color: var(--accent2); flex-shrink: 0; }
+  .issue-summary { font-size: 12px; color: var(--text2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .issue-type-icon { width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; }
+
+  .jira-main { display: flex; flex-direction: column; gap: 16px; }
+  .issue-detail {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+  }
+  .issue-detail-hdr {
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .issue-detail-key { font-family: var(--mono); font-size: 12px; color: var(--accent2); margin-bottom: 8px; }
+  .issue-detail-title { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+  .issue-meta-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .issue-detail-body { padding: 24px; }
+  .issue-description { font-size: 14px; color: var(--text2); line-height: 1.7; margin-bottom: 24px; }
+
+  .subtasks-section h4 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+  .subtask-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 8px;
+    background: var(--surface2); margin-bottom: 6px;
+    border: 1px solid var(--border);
+    cursor: pointer; transition: border-color 0.2s;
+  }
+  .subtask-row:hover { border-color: var(--border2); }
+  .subtask-key { font-family: var(--mono); font-size: 11px; color: var(--accent2); flex-shrink: 0; }
+  .subtask-summary { font-size: 13px; flex: 1; }
+  .subtask-status { font-family: var(--mono); font-size: 11px; }
+
+  .cors-warning {
+    background: rgba(227,179,65,0.08); border: 1px solid rgba(227,179,65,0.2);
+    border-radius: 10px; padding: 14px 18px;
+    font-size: 13px; color: var(--yellow); line-height: 1.6;
+  }
+  .cors-warning strong { font-weight: 700; }
+  .cors-warning code { font-family: var(--mono); font-size: 11px; background: rgba(227,179,65,0.1); padding: 2px 6px; border-radius: 4px; }
+
+  .jira-empty {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 60px; text-align: center;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    min-height: 300px;
+  }
+
+  /* ══════════════════════════
+     MODULE 3: TMS
+  ══════════════════════════ */
+  .tms-layout {
+    display: grid; grid-template-columns: 380px 1fr; gap: 24px; align-items: start;
+  }
+  @media (max-width: 900px) { .tms-layout { grid-template-columns: 1fr; } }
+
+  .tms-form { display: flex; flex-direction: column; gap: 14px; }
+  .steps-builder { display: flex; flex-direction: column; gap: 8px; }
+  .step-inp-row {
+    display: flex; gap: 8px; align-items: center;
+  }
+  .step-inp-row .inp { flex: 1; }
+  .btn-step-remove {
+    width: 32px; height: 38px;
+    background: transparent; border: 1px solid var(--border2);
+    border-radius: 8px; color: var(--text3); cursor: pointer;
+    transition: all 0.2s; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .btn-step-remove:hover { color: var(--red); border-color: rgba(248,81,73,0.3); }
+
+  .checklists-area { display: flex; flex-direction: column; gap: 16px; }
+  .checklist-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+    animation: fadeUp 0.25s ease both;
+  }
+  .checklist-hdr {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface2);
+  }
+  .checklist-hdr-info { flex: 1; }
+  .checklist-task-id { font-family: var(--mono); font-size: 11px; color: var(--accent2); }
+  .checklist-name { font-size: 15px; font-weight: 700; margin-top: 2px; }
+  .checklist-progress { font-family: var(--mono); font-size: 12px; color: var(--text2); flex-shrink: 0; }
+  .checklist-del {
+    width: 30px; height: 30px;
+    background: transparent; border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text3); cursor: pointer;
+    transition: all 0.2s; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .checklist-del:hover { color: var(--red); border-color: rgba(248,81,73,0.3); }
+
+  .checklist-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+  .check-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 8px;
+    background: var(--surface2); border: 1px solid transparent;
+    transition: border-color 0.2s;
+  }
+  .check-row:hover { border-color: var(--border); }
+  .check-row.done { opacity: 0.6; }
+  .check-box {
+    width: 18px; height: 18px; border-radius: 5px;
+    border: 1.5px solid var(--border2); background: var(--bg);
+    cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; font-size: 11px;
+  }
+  .check-row.done .check-box { background: var(--green); border-color: var(--green); color: #fff; }
+  .check-label {
+    font-size: 13px; flex: 1; cursor: pointer; line-height: 1.4;
+  }
+  .check-row.done .check-label { text-decoration: line-through; color: var(--text3); }
+  .progress-bar-wrap { height: 3px; background: var(--surface3); }
+  .progress-bar { height: 3px; background: var(--green); transition: width 0.4s ease; }
+
+  .tms-empty { color: var(--text3); font-size: 14px; text-align: center; padding: 60px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ══════════════════════ HOME ══════════════════════ -->
+<div class="view active" id="view-home">
+  <header class="hdr">
+    <div class="hdr-logo">ISN<span>/</span>TEST<span>.</span>AI</div>
+    <span style="font-size:12px; color:var(--text3); font-family:var(--mono);">v2.0 · GITHUB PAGES</span>
+  </header>
+  <div style="flex:1; display:flex; flex-direction:column; align-items:center; padding:80px 40px;">
+    <div class="home-hero">
+      <div class="home-badge">● QA PLATFORM · Issin Ruslan</div>
+      <h1>Quality tools for<br><em>modern engineers</em></h1>
+      <p>Генерация тест-кейсов, мониторинг Jira и управление чек-листами — всё в одном месте.</p>
+    </div>
+    <div class="modules-grid">
+      <div class="module-card" data-id="gen" onclick="nav('gen')">
+        <div class="module-num">01</div>
+        <div class="module-icon">🤖</div>
+        <h3>Генерация тест-кейсов</h3>
+        <p>AI генерирует структурированные тест-кейсы по описанию фичи или требованиям.</p>
+        <div class="module-arrow">Открыть <span>→</span></div>
+      </div>
+      <div class="module-card" data-id="jira" onclick="nav('jira')">
+        <div class="module-num">02</div>
+        <div class="module-icon">📋</div>
+        <h3>Jira Releases Monitor</h3>
+        <p>Дерево релизов проекта AS: версии, задачи, подзадачи — всё в реальном времени.</p>
+        <div class="module-arrow">Открыть <span>→</span></div>
+      </div>
+      <div class="module-card" data-id="tms" onclick="nav('tms')">
+        <div class="module-num">03</div>
+        <div class="module-icon">✅</div>
+        <h3>TMS Чек-листы</h3>
+        <p>Создавайте чек-листы для задач, отмечайте выполненное. Данные хранятся локально.</p>
+        <div class="module-arrow">Открыть <span>→</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ GEN ══════════════════════ -->
+<div class="view" id="view-gen">
+  <header class="hdr">
+    <div class="hdr-logo">ISN<span>/</span>TEST<span>.</span>AI <span style="color:var(--text3)">· Генерация тест-кейсов</span></div>
+    <button class="btn-back" onclick="nav('home')">← Назад</button>
+  </header>
+  <div class="module-body">
+    <div class="module-wrap">
+      <div class="gen-grid">
+        <!-- LEFT: INPUT -->
+        <div style="display:flex; flex-direction:column; gap:20px;">
+          <div class="card">
+            <div style="margin-bottom:16px;">
+              <div class="label">Описание фичи / требования</div>
+              <textarea class="inp" id="gen-req" placeholder="Например: Пользователь должен зарегистрироваться по email. Форма содержит поля: имя, email, пароль (мин. 8 символов). После регистрации — письмо подтверждения..."></textarea>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+              <div>
+                <div class="label">Формат</div>
+                <select class="inp" id="gen-format">
+                  <option value="standard">Стандартный</option>
+                  <option value="gherkin">BDD / Gherkin</option>
+                  <option value="checklist">Чеклист</option>
+                </select>
+              </div>
+              <div>
+                <div class="label">Язык</div>
+                <select class="inp" id="gen-lang">
+                  <option value="ru">Русский</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
+              <div>
+                <div class="label">Кол-во кейсов</div>
+                <select class="inp" id="gen-count">
+                  <option value="5">5</option>
+                  <option value="10" selected>10</option>
+                  <option value="15">15</option>
+                  <option value="20">20</option>
+                </select>
+              </div>
+              <div>
+                <div class="label">Приоритет</div>
+                <select class="inp" id="gen-prio">
+                  <option value="all">Все уровни</option>
+                  <option value="high">Только High</option>
+                  <option value="medium">Medium+</option>
+                </select>
+              </div>
+            </div>
+            <div class="gen-options">
+              <label class="gen-toggle on" id="tog-negative">
+                <input type="checkbox" checked onchange="toggleTog(this,'tog-negative')">
+                <span style="font-size:13px;">Негативные сценарии</span>
+                <div class="tog-dot"></div>
+              </label>
+              <label class="gen-toggle on" id="tog-boundary">
+                <input type="checkbox" checked onchange="toggleTog(this,'tog-boundary')">
+                <span style="font-size:13px;">Граничные значения</span>
+                <div class="tog-dot"></div>
+              </label>
+            </div>
+          </div>
+
+          <button class="btn-primary" id="gen-btn" onclick="generateTestCases()" style="width:100%; padding:14px;">
+            <span id="gen-btn-icon">🤖</span>
+            <span id="gen-btn-text">Сгенерировать тест-кейсы</span>
+          </button>
+
+          <div style="font-size:12px; color:var(--text3); line-height:1.6; background:var(--surface2); padding:12px 16px; border-radius:8px; border:1px solid var(--border);">
+            <strong style="color:var(--accent);">⚙️ Подключение API:</strong> Для реальной генерации через AI — добавьте свой API-ключ Anthropic или OpenAI в константу <code style="font-family:var(--mono); font-size:10px; background:var(--surface3); padding:1px 5px; border-radius:3px;">AI_API_KEY</code> в начале скрипта. Сейчас используется демо-режим.
+          </div>
+        </div>
+
+        <!-- RIGHT: OUTPUT -->
+        <div class="result-area">
+          <div class="result-hdr">
+            <div class="result-hdr-title">
+              Результат
+              <span class="tag orange" id="gen-count-badge">0 кейсов</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn-ghost" onclick="exportGenCSV()" style="font-size:12px; padding:6px 12px;">CSV</button>
+              <button class="btn-ghost" onclick="copyGenAll()" style="font-size:12px; padding:6px 12px;">Копировать</button>
+            </div>
+          </div>
+          <div class="result-body" id="gen-result-body">
+            <div class="empty-result">
+              <div class="empty-icon">🧪</div>
+              <div style="font-size:15px; font-weight:600; color:var(--text2);">Тест-кейсов пока нет</div>
+              <div style="font-size:13px; color:var(--text3); max-width:280px; line-height:1.6;">Заполните требования и нажмите «Сгенерировать»</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ JIRA ══════════════════════ -->
+<div class="view" id="view-jira">
+  <header class="hdr">
+    <div class="hdr-logo">ISN<span>/</span>TEST<span>.</span>AI <span style="color:var(--text3)">· Jira Releases Monitor</span></div>
+    <button class="btn-back" onclick="nav('home')">← Назад</button>
+  </header>
+  <div class="module-body">
+    <div class="module-wrap">
+      <div class="cors-warning" style="margin-bottom:24px;">
+        <strong>⚠️ CORS-предупреждение:</strong> Прямые запросы к Jira Cloud (<code>*.atlassian.net</code>) из браузера блокируются CORS. Данные загружаются через <code>cors-proxy-ccip.onrender.com</code>. Если прокси недоступен — включите расширение <code>CORS Unblock</code> или поднимите локальный прокси (<code>npx local-cors-proxy</code>).
+      </div>
+
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
+        <button class="btn-primary blue" onclick="loadReleases()">
+          <span id="jira-refresh-icon">🔄</span> Загрузить релизы
+        </button>
+        <span style="font-family:var(--mono); font-size:12px; color:var(--text3);">PROJECT: AS · mechtamarket.atlassian.net</span>
+        <span class="tag blue" id="jira-status-tag">Ожидание</span>
+      </div>
+
+      <div class="jira-layout" id="jira-layout">
+        <!-- Sidebar -->
+        <div class="jira-sidebar">
+          <div class="label">Версии / Релизы</div>
+          <div class="releases-list" id="releases-list">
+            <div style="color:var(--text3); font-size:13px; text-align:center; padding:40px 20px;">
+              Нажмите «Загрузить релизы»
+            </div>
+          </div>
+        </div>
+
+        <!-- Main -->
+        <div class="jira-main" id="jira-main">
+          <div class="jira-empty">
+            <div style="font-size:36px; opacity:0.4;">📋</div>
+            <div style="font-size:15px; font-weight:600; color:var(--text2);">Выберите релиз</div>
+            <div style="font-size:13px; color:var(--text3);">Загрузите релизы и нажмите на любой из них</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ TMS ══════════════════════ -->
+<div class="view" id="view-tms">
+  <header class="hdr">
+    <div class="hdr-logo">ISN<span>/</span>TEST<span>.</span>AI <span style="color:var(--text3)">· TMS Чек-листы</span></div>
+    <button class="btn-back" onclick="nav('home')">← Назад</button>
+  </header>
+  <div class="module-body">
+    <div class="module-wrap">
+      <div class="tms-layout">
+        <!-- Form -->
+        <div class="card tms-form">
+          <div style="font-size:16px; font-weight:700; margin-bottom:20px; display:flex; align-items:center; gap:8px;">
+            ➕ Новый чек-лист
+          </div>
+          <div>
+            <div class="label">ID задачи (Jira)</div>
+            <input class="inp" id="tms-task-id" placeholder="Напр. AS-1234">
+          </div>
+          <div>
+            <div class="label">Название чек-листа</div>
+            <input class="inp" id="tms-name" placeholder="Напр. Тестирование формы регистрации">
+          </div>
+          <div>
+            <div class="label">Шаги / Проверки</div>
+            <div class="steps-builder" id="steps-builder">
+              <div class="step-inp-row">
+                <input class="inp" placeholder="Шаг 1...">
+                <button class="btn-step-remove" onclick="removeStep(this)">✕</button>
+              </div>
+            </div>
+            <button class="btn-ghost" onclick="addStep()" style="margin-top:8px; width:100%; justify-content:center;">+ Добавить шаг</button>
+          </div>
+          <button class="btn-primary green" onclick="createChecklist()" style="width:100%; padding:13px;">✅ Создать чек-лист</button>
+        </div>
+
+        <!-- Checklists -->
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+            <div class="label" style="margin:0;">Мои чек-листы</div>
+            <span class="tag green" id="tms-count-tag">0 чек-листов</span>
+          </div>
+          <div class="checklists-area" id="checklists-area">
+            <div class="tms-empty">Чек-листов пока нет.<br>Создайте первый!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+//  CONFIG — Замените AI_API_KEY для реальной генерации
+// ══════════════════════════════════════════════════
+const AI_API_KEY = ''; // Ваш Anthropic API key (claude-sonnet-4-20250514)
+const USE_CLAUDE_API = !!AI_API_KEY;
+
+// Jira credentials (hardcoded as per requirements)
+const JIRA = {
+  url: 'https://mechtamarket.atlassian.net',
+  project: 'AS',
+  email: 'ruslan.issin@ddream.kz',
+  token: 'ATATT3xFfGF0D627WXWYxobPKhEl96QVkM1gHTZ5o4yAJwBqvb1kPS7WBFM7iFn2m2aVjazAAH89PUg1V6U8dJFcai3Yy-FtiuEeDqzkMFQi38qVgso6mPZrH0ZyD5DtA0974I62_i7_32WSCP6HRfJ8DHGVoby2dm_BlHEZIEh5LPVE73uKtRE=1DD5DE9C',
+  // Basic Auth header for direct requests (may be blocked by CORS)
+  get auth() { return 'Basic ' + btoa(`${this.email}:${this.token}`); },
+  // CORS proxy (as used in original app)
+  proxy: 'https://cors-proxy-ccip.onrender.com'
+};
+
+// ══════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════
+function nav(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+  window.scrollTo(0, 0);
+  if (id === 'tms') renderChecklists();
+}
+
+// ══════════════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════════════
+let toastTimer;
+function toast(msg, type = 'info') {
+  const el = document.getElementById('toast');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+// ══════════════════════════════════════════════════
+//  TOGGLE HELPER
+// ══════════════════════════════════════════════════
+function toggleTog(cb, id) {
+  document.getElementById(id).classList.toggle('on', cb.checked);
+}
+
+// ══════════════════════════════════════════════════
+//  MODULE 1: TEST CASE GENERATION
+// ══════════════════════════════════════════════════
+let generatedCases = [];
+
+async function generateTestCases() {
+  const req = document.getElementById('gen-req').value.trim();
+  if (!req) { toast('Введите требования для генерации', 'error'); return; }
+
+  const btn = document.getElementById('gen-btn');
+  const btnText = document.getElementById('gen-btn-text');
+  const btnIcon = document.getElementById('gen-btn-icon');
+  btn.disabled = true;
+  btnIcon.innerHTML = '<div class="loader"></div>';
+  btnText.textContent = 'Генерирую...';
+
+  const format = document.getElementById('gen-format').value;
+  const lang = document.getElementById('gen-lang').value;
+  const count = document.getElementById('gen-count').value;
+  const negative = document.getElementById('tog-negative').classList.contains('on');
+  const boundary = document.getElementById('tog-boundary').classList.contains('on');
+
+  try {
+    let cases;
+    if (USE_CLAUDE_API) {
+      cases = await generateWithClaude(req, { format, lang, count, negative, boundary });
+    } else {
+      cases = await generateMock(req, { format, lang, count: parseInt(count), negative, boundary });
+    }
+    generatedCases = cases;
+    renderGenCases(cases);
+    document.getElementById('gen-count-badge').textContent = cases.length + ' кейсов';
+    toast(`✅ Сгенерировано ${cases.length} тест-кейсов`, 'success');
+  } catch (e) {
+    toast('Ошибка генерации: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btnIcon.textContent = '🤖';
+    btnText.textContent = 'Сгенерировать тест-кейсы';
+  }
+}
+
+// ── Real Claude API ──
+async function generateWithClaude(req, opts) {
+  const prompt = buildPrompt(req, opts);
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': AI_API_KEY,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!res.ok) throw new Error('API Error: ' + res.status);
+  const data = await res.json();
+  const text = data.content[0].text;
+  return robustParseJSON(text);
+}
+
+function buildPrompt(req, opts) {
+  const fmtMap = {
+    standard: 'Стандартный: Предусловия, пронумерованные Шаги, Ожидаемый результат',
+    gherkin: 'BDD/Gherkin: Given / When / Then',
+    checklist: 'Чеклист: список проверок с ожидаемым результатом да/нет'
+  };
+  return `Ты опытный QA-инженер. Сгенерируй тест-кейсы по требованиям.
+
+ТРЕБОВАНИЯ: ${req}
+
+ИНСТРУКЦИИ:
+- Формат: ${fmtMap[opts.format]}
+- Язык: ${opts.lang === 'ru' ? 'Русский' : 'English'}
+- Максимум: ${opts.count} тест-кейсов
+- ${opts.negative ? 'Включи негативные сценарии' : 'Только позитивные'}
+- ${opts.boundary ? 'Включи граничные значения' : 'Без граничных значений'}
+
+Верни ТОЛЬКО валидный JSON массив без markdown-обёрток:
+[{"id":"TC-001","name":"...","preconditions":"...","steps":["Шаг 1","Шаг 2"],"expected":"...","priority":"High","type":"positive"}]`;
+}
+
+// ── Mock generation ──
+async function generateMock(req, opts) {
+  await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
+  const words = req.split(' ').slice(0, 6).join(' ');
+  const prios = ['High', 'Medium', 'Low'];
+  const types = opts.negative ? ['positive', 'positive', 'positive', 'negative', 'boundary'] : ['positive'];
+  const count = Math.min(opts.count, 12);
+  const cases = [];
+
+  const templates = [
+    { name: 'Успешное выполнение основного сценария', type: 'positive', prio: 'High',
+      steps: ['Открыть приложение и перейти на целевую страницу', 'Ввести корректные данные во все обязательные поля', 'Нажать кнопку подтверждения', 'Дождаться ответа системы'],
+      expected: 'Система успешно обрабатывает запрос и отображает результат' },
+    { name: 'Проверка валидации обязательных полей', type: 'negative', prio: 'High',
+      steps: ['Открыть форму', 'Оставить обязательные поля пустыми', 'Нажать кнопку отправки'],
+      expected: 'Система отображает ошибки валидации для каждого пустого обязательного поля' },
+    { name: 'Граничное значение — минимальная длина', type: 'boundary', prio: 'Medium',
+      steps: ['Открыть форму', 'Ввести значение ровно на 1 символ меньше минимального', 'Попытаться отправить форму'],
+      expected: 'Система отклоняет ввод с сообщением о минимальной длине' },
+    { name: 'Граничное значение — максимальная длина', type: 'boundary', prio: 'Medium',
+      steps: ['Открыть форму', 'Ввести максимально допустимое количество символов', 'Отправить форму'],
+      expected: 'Система принимает значение и обрабатывает его корректно' },
+    { name: 'Неверный формат данных', type: 'negative', prio: 'High',
+      steps: ['Открыть форму', 'Ввести данные в неверном формате (напр. текст вместо числа)', 'Нажать отправить'],
+      expected: 'Система показывает сообщение об ошибке формата данных' },
+    { name: 'Проверка работы при медленном соединении', type: 'positive', prio: 'Low',
+      steps: ['Включить эмуляцию медленного соединения (DevTools)', 'Выполнить основное действие', 'Ожидать завершения'],
+      expected: 'Система отображает индикатор загрузки и корректно завершает операцию' },
+    { name: 'Дублирование данных', type: 'negative', prio: 'Medium',
+      steps: ['Создать запись с уникальными данными', 'Попытаться создать вторую запись с теми же данными'],
+      expected: 'Система предотвращает дублирование и выдаёт соответствующую ошибку' },
+    { name: 'Специальные символы в полях ввода', type: 'negative', prio: 'Medium',
+      steps: ['Ввести специальные символы: <script>, --; DROP TABLE', 'Отправить форму'],
+      expected: 'Система корректно экранирует ввод, данные сохраняются безопасно' },
+    { name: 'Проверка прав доступа', type: 'positive', prio: 'High',
+      steps: ['Войти под пользователем с ограниченными правами', 'Попытаться выполнить действие, доступное только администратору'],
+      expected: 'Система запрещает действие и перенаправляет на страницу с ошибкой доступа' },
+    { name: 'Сессия — истечение времени', type: 'negative', prio: 'Medium',
+      steps: ['Войти в систему', 'Оставить сессию неактивной на 30+ минут', 'Попытаться выполнить действие'],
+      expected: 'Система завершает сессию и перенаправляет на страницу входа' },
+    { name: 'Отображение на мобильных устройствах', type: 'positive', prio: 'Low',
+      steps: ['Открыть страницу на мобильном устройстве (320px)', 'Проверить адаптивность интерфейса', 'Выполнить основной сценарий'],
+      expected: 'Интерфейс корректно адаптируется, функциональность сохраняется' },
+    { name: 'Параллельные запросы', type: 'positive', prio: 'Medium',
+      steps: ['Открыть 2 вкладки с одинаковой страницей', 'Выполнить одно и то же действие одновременно'],
+      expected: 'Система корректно обрабатывает оба запроса без конфликтов данных' },
+  ];
+
+  for (let i = 0; i < count; i++) {
+    const tpl = templates[i % templates.length];
+    const type = types[i % types.length];
+    cases.push({
+      id: 'TC-' + String(i + 1).padStart(3, '0'),
+      name: tpl.name,
+      preconditions: `Пользователь авторизован. Тестовая среда: ${words || 'функция'}`,
+      steps: tpl.steps,
+      expected: tpl.expected,
+      priority: prios[i % 3],
+      type: tpl.type
+    });
+  }
+
+  if (!opts.negative) return cases.filter(c => c.type === 'positive').slice(0, count);
+  return cases.slice(0, count);
+}
+
+function robustParseJSON(text) {
+  text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  try { return JSON.parse(text); } catch (_) {}
+  const start = text.indexOf('['), end = text.lastIndexOf(']');
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)); } catch (_) {}
+  }
+  throw new Error('Не удалось разобрать JSON');
+}
+
+function renderGenCases(cases) {
+  const body = document.getElementById('gen-result-body');
+  if (!cases.length) {
+    body.innerHTML = '<div class="empty-result"><div class="empty-icon">🧪</div><div>Нет кейсов</div></div>';
+    return;
+  }
+  const prioClass = { High: 'red', Medium: 'yellow', Low: 'green' };
+  const typeClass = { positive: 'green', negative: 'red', boundary: 'blue' };
+  body.innerHTML = cases.map((tc, i) => `
+    <div class="tc" id="tc-${i}" style="animation-delay:${i * 0.04}s">
+      <div class="tc-hdr" onclick="toggleTC(${i})">
+        <span class="tc-id-tag">${tc.id}</span>
+        <span class="tc-name-text">${tc.name}</span>
+        ${tc.priority ? `<span class="tag ${prioClass[tc.priority] || 'blue'}" style="flex-shrink:0;font-size:10px;">${tc.priority}</span>` : ''}
+        ${tc.type ? `<span class="tag ${typeClass[tc.type] || 'blue'}" style="flex-shrink:0;font-size:10px;">${tc.type}</span>` : ''}
+        <span class="tc-chevron">▼</span>
+      </div>
+      <div class="tc-bd">
+        ${tc.preconditions ? `<div><div class="tc-field-label">Предусловия</div><div class="tc-field-val">${tc.preconditions}</div></div>` : ''}
+        ${tc.steps?.length ? `<div><div class="tc-field-label">Шаги</div><div class="tc-steps-list">${tc.steps.map((s, idx) => `<div class="tc-step"><span class="tc-step-num">${idx+1}</span><span>${s}</span></div>`).join('')}</div></div>` : ''}
+        <div><div class="tc-field-label">Ожидаемый результат</div><div class="tc-expected-box">${tc.expected}</div></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleTC(i) {
+  document.getElementById('tc-' + i).classList.toggle('open');
+}
+
+function exportGenCSV() {
+  if (!generatedCases.length) { toast('Нет данных для экспорта', 'error'); return; }
+  const rows = [['ID','Название','Предусловия','Шаги','Ожидаемый результат','Приоритет','Тип']];
+  generatedCases.forEach(tc => rows.push([
+    tc.id, tc.name, tc.preconditions || '',
+    (tc.steps || []).join(' | '), tc.expected, tc.priority || '', tc.type || ''
+  ]));
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  dlFile('test-cases.csv', csv, 'text/csv');
+}
+
+function copyGenAll() {
+  if (!generatedCases.length) { toast('Нет кейсов', 'error'); return; }
+  const txt = generatedCases.map(tc =>
+    `${tc.id} — ${tc.name}\nПредусловия: ${tc.preconditions || '–'}\nШаги:\n${(tc.steps||[]).map((s,i)=>`  ${i+1}. ${s}`).join('\n')}\nОжидаемый результат: ${tc.expected}\n`
+  ).join('\n---\n');
+  navigator.clipboard.writeText(txt).then(() => toast('Скопировано!', 'success'));
+}
+
+function dlFile(name, content, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = name; a.click();
+}
+
+// ══════════════════════════════════════════════════
+//  MODULE 2: JIRA RELEASES MONITOR
+// ══════════════════════════════════════════════════
+let jiraVersions = [];
+let activeRelease = null;
+
+async function jiraRequest(path) {
+  // Attempt 1: direct (will fail with CORS on cloud Jira, but works locally / with browser extension)
+  // Attempt 2: through proxy (same proxy as original app.py uses)
+  const directUrl = JIRA.url + '/rest/api/2/' + path;
+  const proxyUrl = JIRA.proxy + '/jira?path=' + encodeURIComponent(path);
+
+  // Try proxy first (matching original architecture)
+  try {
+    const res = await fetch(JIRA.proxy + '/jira', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: JIRA.url, email: JIRA.email, token: JIRA.token, path })
+    });
+    if (res.ok) {
+      const d = await res.json();
+      return d.data || d;
+    }
+  } catch (_) {}
+
+  // Fallback: direct with Basic Auth (works if CORS extension is enabled)
+  const res = await fetch(directUrl, {
+    headers: { 'Authorization': JIRA.auth, 'Accept': 'application/json' }
+  });
+  if (!res.ok) throw new Error('Jira API ' + res.status + ': ' + res.statusText);
+  return res.json();
+}
+
+async function loadReleases() {
+  const icon = document.getElementById('jira-refresh-icon');
+  const statusTag = document.getElementById('jira-status-tag');
+  icon.innerHTML = '<div class="loader" style="color:var(--accent2)"></div>';
+  statusTag.className = 'tag blue';
+  statusTag.textContent = 'Загрузка...';
+
+  try {
+    const data = await jiraRequest(`project/${JIRA.project}/versions`);
+    const versions = Array.isArray(data) ? data : (data.values || []);
+    jiraVersions = versions.reverse(); // latest first
+    renderReleasesList(jiraVersions);
+    statusTag.className = 'tag green';
+    statusTag.textContent = `${jiraVersions.length} версий`;
+    toast(`Загружено ${jiraVersions.length} версий`, 'success');
+  } catch (e) {
+    statusTag.className = 'tag red';
+    statusTag.textContent = 'Ошибка';
+    toast('Ошибка Jira: ' + e.message + '. Проверьте прокси или включите CORS-расширение.', 'error');
+    // Show mock data for demo
+    renderMockReleases();
+  } finally {
+    icon.textContent = '🔄';
+  }
+}
+
+function renderMockReleases() {
+  const mock = [
+    { id: '1', name: 'v2.5.0', released: false, description: 'Текущий релиз' },
+    { id: '2', name: 'v2.4.2', released: true, description: 'Патч-релиз' },
+    { id: '3', name: 'v2.4.0', released: true, description: 'Мажорный релиз Q1' },
+    { id: '4', name: 'v2.3.1', released: true, description: '' },
+  ];
+  jiraVersions = mock;
+  renderReleasesList(mock);
+  toast('Загружены демо-данные (CORS недоступен)', 'info');
+}
+
+function renderReleasesList(versions) {
+  const list = document.getElementById('releases-list');
+  if (!versions.length) {
+    list.innerHTML = '<div style="color:var(--text3);font-size:13px;text-align:center;padding:20px;">Версий нет</div>';
+    return;
+  }
+  list.innerHTML = versions.map(v => `
+    <div class="release-item" id="rel-${v.id}" onclick="selectRelease('${v.id}','${escH(v.name)}')">
+      <div class="release-hdr">
+        <div class="release-dot" style="background:${v.released ? 'var(--green)' : 'var(--accent)'}"></div>
+        <span class="release-name">${escH(v.name)}</span>
+        <span class="release-count" id="rel-cnt-${v.id}">—</span>
+        <span class="release-chevron">▶</span>
+      </div>
+      <div class="release-issues" id="rel-issues-${v.id}"></div>
+    </div>
+  `).join('');
+}
+
+async function selectRelease(versionId, versionName) {
+  // Toggle
+  const el = document.getElementById('rel-' + versionId);
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    return;
+  }
+  document.querySelectorAll('.release-item').forEach(r => r.classList.remove('open', 'active'));
+  el.classList.add('open', 'active');
+  activeRelease = versionId;
+
+  const issuesDiv = document.getElementById('rel-issues-' + versionId);
+  const cntSpan = document.getElementById('rel-cnt-' + versionId);
+  issuesDiv.innerHTML = '<div style="padding:8px 12px;color:var(--text3);font-size:12px;font-family:var(--mono);">Загрузка...</div>';
+
+  // Show main panel loading
+  const main = document.getElementById('jira-main');
+  main.innerHTML = `<div class="jira-empty"><div class="loader" style="color:var(--accent2)"></div><div style="font-size:13px;color:var(--text3);margin-top:12px;">Загружаю задачи...</div></div>`;
+
+  try {
+    const jql = encodeURIComponent(`project=${JIRA.project} AND fixVersion="${versionName}" ORDER BY created DESC`);
+    const data = await jiraRequest(`search?jql=${jql}&maxResults=50&fields=summary,status,issuetype,priority,description,subtasks`);
+    const issues = data.issues || [];
+    cntSpan.textContent = issues.length + ' задач';
+
+    issuesDiv.innerHTML = issues.length ? issues.map(iss => `
+      <div class="issue-row" id="iss-${iss.key}" onclick="showIssueDetail(${JSON.stringify(iss).replace(/'/g,'&#39;').replace(/"/g,'&quot;')})">
+        <div class="issue-type-icon" style="background:rgba(121,192,255,0.1); color:var(--accent2);">◆</div>
+        <span class="issue-key">${iss.key}</span>
+        <span class="issue-summary">${escH(iss.fields?.summary || '—')}</span>
+        <span class="tag ${statusColor(iss.fields?.status?.name)}" style="font-size:10px;flex-shrink:0;">${iss.fields?.status?.name || '—'}</span>
+      </div>
+    `).join('') : '<div style="padding:8px 12px;color:var(--text3);font-size:12px;">Задач нет</div>';
+
+    if (issues.length) showIssueDetail(issues[0]);
+    else main.innerHTML = `<div class="jira-empty"><div style="font-size:36px;opacity:.4;">📭</div><div style="font-size:15px;font-weight:600;color:var(--text2);">Задач нет</div><div style="font-size:13px;color:var(--text3);">В этой версии не найдено задач</div></div>`;
+  } catch (e) {
+    cntSpan.textContent = 'Ошибка';
+    issuesDiv.innerHTML = '<div style="padding:8px 12px;color:var(--red);font-size:12px;">Ошибка загрузки</div>';
+    main.innerHTML = `<div class="jira-empty"><div style="font-size:36px;">⚠️</div><div style="font-size:15px;font-weight:600;color:var(--red);">Ошибка загрузки</div><div style="font-size:13px;color:var(--text3);">${escH(e.message)}</div></div>`;
+  }
+}
+
+function showIssueDetail(iss) {
+  if (typeof iss === 'string') iss = JSON.parse(iss);
+  document.querySelectorAll('.issue-row').forEach(r => r.classList.remove('active'));
+  const row = document.getElementById('iss-' + iss.key);
+  if (row) row.classList.add('active');
+
+  const f = iss.fields || {};
+  const subtasks = f.subtasks || [];
+  const main = document.getElementById('jira-main');
+
+  main.innerHTML = `
+    <div class="issue-detail">
+      <div class="issue-detail-hdr">
+        <div class="issue-detail-key">${iss.key}</div>
+        <div class="issue-detail-title">${escH(f.summary || '—')}</div>
+        <div class="issue-meta-row">
+          <span class="tag ${statusColor(f.status?.name)}">${f.status?.name || '—'}</span>
+          ${f.priority ? `<span class="tag yellow" style="font-size:11px;">⚡ ${f.priority.name}</span>` : ''}
+          ${f.issuetype ? `<span class="tag blue" style="font-size:11px;">◆ ${f.issuetype.name}</span>` : ''}
+        </div>
+      </div>
+      <div class="issue-detail-body">
+        ${f.description ? `<div class="issue-description">${escH(typeof f.description === 'string' ? f.description : (f.description?.content?.[0]?.content?.[0]?.text || 'Нет описания'))}</div>` : '<div class="issue-description" style="color:var(--text3);">Описание не указано</div>'}
+        ${subtasks.length ? `
+          <div class="subtasks-section">
+            <h4>Подзадачи (${subtasks.length})</h4>
+            ${subtasks.map(st => `
+              <div class="subtask-row">
+                <div class="issue-type-icon" style="background:rgba(188,140,255,0.1);color:var(--purple);">◇</div>
+                <span class="subtask-key">${st.key}</span>
+                <span class="subtask-summary">${escH(st.fields?.summary || '—')}</span>
+                <span class="tag ${statusColor(st.fields?.status?.name)}" style="font-size:10px;">${st.fields?.status?.name || '—'}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<div style="color:var(--text3);font-size:13px;">Подзадач нет</div>`}
+      </div>
+    </div>
+  `;
+}
+
+function statusColor(s) {
+  if (!s) return 'blue';
+  const sl = s.toLowerCase();
+  if (sl.includes('done') || sl.includes('closed') || sl.includes('resolved')) return 'green';
+  if (sl.includes('progress') || sl.includes('review') || sl.includes('testing')) return 'yellow';
+  if (sl.includes('block') || sl.includes('reject') || sl.includes('fail')) return 'red';
+  return 'blue';
+}
+
+function escH(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════
+//  MODULE 3: TMS CHECKLISTS (localStorage)
+// ══════════════════════════════════════════════════
+const TMS_KEY = 'isn_tms_checklists';
+
+function loadChecklists() {
+  try { return JSON.parse(localStorage.getItem(TMS_KEY) || '[]'); } catch (_) { return []; }
+}
+function saveChecklists(data) {
+  localStorage.setItem(TMS_KEY, JSON.stringify(data));
+}
+
+function addStep() {
+  const builder = document.getElementById('steps-builder');
+  const count = builder.children.length + 1;
+  const row = document.createElement('div');
+  row.className = 'step-inp-row';
+  row.innerHTML = `<input class="inp" placeholder="Шаг ${count}..."><button class="btn-step-remove" onclick="removeStep(this)">✕</button>`;
+  builder.appendChild(row);
+}
+
+function removeStep(btn) {
+  const builder = document.getElementById('steps-builder');
+  if (builder.children.length <= 1) { toast('Минимум 1 шаг', 'info'); return; }
+  btn.parentElement.remove();
+}
+
+function createChecklist() {
+  const taskId = document.getElementById('tms-task-id').value.trim();
+  const name = document.getElementById('tms-name').value.trim();
+  const stepInputs = document.querySelectorAll('#steps-builder .step-inp-row input');
+  const steps = Array.from(stepInputs).map(i => i.value.trim()).filter(Boolean);
+
+  if (!name) { toast('Введите название чек-листа', 'error'); return; }
+  if (!steps.length) { toast('Добавьте хотя бы 1 шаг', 'error'); return; }
+
+  const checklists = loadChecklists();
+  checklists.unshift({
+    id: Date.now(),
+    taskId, name,
+    steps: steps.map(s => ({ text: s, done: false })),
+    createdAt: new Date().toLocaleDateString('ru-RU')
+  });
+  saveChecklists(checklists);
+
+  // Reset form
+  document.getElementById('tms-task-id').value = '';
+  document.getElementById('tms-name').value = '';
+  document.getElementById('steps-builder').innerHTML = `<div class="step-inp-row"><input class="inp" placeholder="Шаг 1..."><button class="btn-step-remove" onclick="removeStep(this)">✕</button></div>`;
+
+  renderChecklists();
+  toast('Чек-лист создан!', 'success');
+}
+
+function toggleCheckStep(checklistId, stepIdx) {
+  const checklists = loadChecklists();
+  const cl = checklists.find(c => c.id === checklistId);
+  if (!cl) return;
+  cl.steps[stepIdx].done = !cl.steps[stepIdx].done;
+  saveChecklists(checklists);
+  renderChecklists();
+}
+
+function deleteChecklist(id) {
+  const checklists = loadChecklists().filter(c => c.id !== id);
+  saveChecklists(checklists);
+  renderChecklists();
+  toast('Чек-лист удалён', 'info');
+}
+
+function renderChecklists() {
+  const checklists = loadChecklists();
+  const area = document.getElementById('checklists-area');
+  const countTag = document.getElementById('tms-count-tag');
+  countTag.textContent = checklists.length + ' чек-листов';
+
+  if (!checklists.length) {
+    area.innerHTML = '<div class="tms-empty">Чек-листов пока нет.<br>Создайте первый!</div>';
+    return;
+  }
+
+  area.innerHTML = checklists.map(cl => {
+    const done = cl.steps.filter(s => s.done).length;
+    const total = cl.steps.length;
+    const pct = total ? Math.round(done / total * 100) : 0;
+    return `
+      <div class="checklist-card">
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
+        <div class="checklist-hdr">
+          <div class="checklist-hdr-info">
+            ${cl.taskId ? `<div class="checklist-task-id">${escH(cl.taskId)} · ${cl.createdAt}</div>` : `<div class="checklist-task-id">${cl.createdAt}</div>`}
+            <div class="checklist-name">${escH(cl.name)}</div>
+          </div>
+          <div class="checklist-progress">${done}/${total} · ${pct}%</div>
+          <button class="checklist-del" onclick="deleteChecklist(${cl.id})" title="Удалить">✕</button>
+        </div>
+        <div class="checklist-body">
+          ${cl.steps.map((step, idx) => `
+            <div class="check-row ${step.done ? 'done' : ''}" onclick="toggleCheckStep(${cl.id}, ${idx})">
+              <div class="check-box">${step.done ? '✓' : ''}</div>
+              <div class="check-label">${escH(step.text)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Init TMS on load
+renderChecklists();
+</script>
+</body>
+</html>
