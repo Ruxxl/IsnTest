@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ISN Test — QA Dashboard</title>
+<title>ISN Test AI — QA Dashboard</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -229,6 +229,7 @@
     animation: spin 0.7s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity:0.3; } 50% { opacity:1; } }
 
   /* ── TOAST ── */
   .toast {
@@ -529,7 +530,8 @@
 <!-- ══════════════════════ HOME ══════════════════════ -->
 <div class="view active" id="view-home">
   <header class="hdr">
-    <div class="hdr-logo">ISN<span>/</span>TEST
+    <div class="hdr-logo">ISN<span>/</span>TEST<span>.</span>AI</div>
+    <span style="font-size:12px; color:var(--text3); font-family:var(--mono);">v2.0 · GITHUB PAGES</span>
   </header>
   <div style="flex:1; display:flex; flex-direction:column; align-items:center; padding:80px 40px;">
     <div class="home-hero">
@@ -634,9 +636,7 @@
             <span id="gen-btn-text">Сгенерировать тест-кейсы</span>
           </button>
 
-          <div style="font-size:12px; color:var(--text3); line-height:1.6; background:var(--surface2); padding:12px 16px; border-radius:8px; border:1px solid var(--border);">
-            <strong style="color:var(--accent);">⚙️ Подключение API:</strong> Для реальной генерации через AI — добавьте свой API-ключ Anthropic или OpenAI в константу <code style="font-family:var(--mono); font-size:10px; background:var(--surface3); padding:1px 5px; border-radius:3px;">AI_API_KEY</code> в начале скрипта. Сейчас используется демо-режим.
-          </div>
+
         </div>
 
         <!-- RIGHT: OUTPUT -->
@@ -650,6 +650,14 @@
               <button class="btn-ghost" onclick="exportGenCSV()" style="font-size:12px; padding:6px 12px;">CSV</button>
               <button class="btn-ghost" onclick="copyGenAll()" style="font-size:12px; padding:6px 12px;">Копировать</button>
             </div>
+          </div>
+          <div id="gen-stream-bar" style="display:none; align-items:center; gap:8px; padding:10px 18px; border-bottom:1px solid var(--border);">
+            <div style="display:flex;gap:4px;">
+              <div style="width:6px;height:6px;background:var(--accent);border-radius:50%;animation:pulse 1s ease-in-out infinite;"></div>
+              <div style="width:6px;height:6px;background:var(--accent);border-radius:50%;animation:pulse 1s ease-in-out 0.2s infinite;"></div>
+              <div style="width:6px;height:6px;background:var(--accent);border-radius:50%;animation:pulse 1s ease-in-out 0.4s infinite;"></div>
+            </div>
+            <span style="font-size:12px;color:var(--text2);font-family:var(--mono);">Генерация тест-кейсов...</span>
           </div>
           <div class="result-body" id="gen-result-body">
             <div class="empty-result">
@@ -762,13 +770,11 @@
 <div class="toast" id="toast"></div>
 
 <script>
+window.addEventListener('DOMContentLoaded', function() {
 // ══════════════════════════════════════════════════
-//  CONFIG — Замените AI_API_KEY для реальной генерации
-// ══════════════════════════════════════════════════
-const AI_API_KEY = ''; // Ваш Anthropic API key (claude-sonnet-4-20250514)
-const USE_CLAUDE_API = !!AI_API_KEY;
-
-// Jira credentials (hardcoded as per requirements)
+//  CONFIG
+// Jira credentials
+const BACKEND = 'https://cors-proxy-ccip.onrender.com';
 const JIRA = {
   url: 'https://mechtamarket.atlassian.net',
   project: 'AS',
@@ -816,8 +822,14 @@ function toggleTog(cb, id) {
 let generatedCases = [];
 
 async function generateTestCases() {
-  const req = document.getElementById('gen-req').value.trim();
-  if (!req) { toast('Введите требования для генерации', 'error'); return; }
+  const requirements = document.getElementById('gen-req').value.trim();
+  if (!requirements) { toast('Введите требования для генерации', 'error'); return; }
+
+  const format = document.getElementById('gen-format').value;
+  const lang = document.getElementById('gen-lang').value;
+  const maxCases = document.getElementById('gen-count').value;
+  const negative = document.getElementById('tog-negative').classList.contains('on');
+  const boundary = document.getElementById('tog-boundary').classList.contains('on');
 
   const btn = document.getElementById('gen-btn');
   const btnText = document.getElementById('gen-btn-text');
@@ -826,149 +838,95 @@ async function generateTestCases() {
   btnIcon.innerHTML = '<div class="loader"></div>';
   btnText.textContent = 'Генерирую...';
 
-  const format = document.getElementById('gen-format').value;
-  const lang = document.getElementById('gen-lang').value;
-  const count = document.getElementById('gen-count').value;
-  const negative = document.getElementById('tog-negative').classList.contains('on');
-  const boundary = document.getElementById('tog-boundary').classList.contains('on');
+  // Show streaming bar
+  document.getElementById('gen-stream-bar').style.display = 'flex';
+  document.getElementById('gen-result-body').innerHTML = '';
+
+  const formatInstructions = {
+    standard: 'Стандартный формат: Предусловия, пронумерованные Шаги, Ожидаемый результат',
+    gherkin: 'BDD/Gherkin формат: Feature, Scenario, Given/When/Then',
+    checklist: 'Чеклист: просто список проверок с ожидаемым результатом да/нет',
+    exploratory: 'Исследовательское тестирование: область, задача, временные рамки, идеи'
+  };
+
+  const prompt = `Ты опытный QA-инженер. На основе требований ниже сгенерируй тест-кейсы.
+
+ТРЕБОВАНИЯ:
+${requirements}
+
+ИНСТРУКЦИИ:
+- Формат: ${formatInstructions[format] || formatInstructions.standard}
+- Язык ответа: ${lang === 'ru' ? 'Русский' : 'English'}
+- Максимум тест-кейсов: ${maxCases}
+- ${negative ? 'ВКЛЮЧИ негативные сценарии (неверные данные, ошибки, граничные случаи)' : 'Только позитивные сценарии'}
+- ${boundary ? 'ВКЛЮЧИ тесты граничных значений' : 'Без граничных значений'}
+- Укажи приоритет каждого кейса (High/Medium/Low)
+
+КРИТИЧЕСКИ ВАЖНО:
+- Верни ТОЛЬКО валидный JSON массив. Никакого текста до или после.
+- Никаких markdown-обёрток, никаких \`\`\`json блоков.
+- Каждое строковое значение должно быть на ОДНОЙ строке (никаких переносов строк внутри строк JSON).
+- Экранируй кавычки внутри строк как \\".
+- Строго следуй формату:
+[{"id":"TC-001","name":"...","preconditions":"...","steps":["Шаг 1","Шаг 2"],"expected":"...","priority":"High","type":"positive"}]`;
 
   try {
-    let cases;
-    if (USE_CLAUDE_API) {
-      cases = await generateWithClaude(req, { format, lang, count, negative, boundary });
-    } else {
-      cases = await generateMock(req, { format, lang, count: parseInt(count), negative, boundary });
-    }
-    generatedCases = cases;
-    renderGenCases(cases);
-    document.getElementById('gen-count-badge').textContent = cases.length + ' кейсов';
-    toast(`✅ Сгенерировано ${cases.length} тест-кейсов`, 'success');
+    const response = await fetch(BACKEND + '/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'API Error ' + response.status);
+
+    generatedCases = robustParseJSON(data.result);
+    if (!generatedCases || !generatedCases.length) throw new Error('Не удалось извлечь тест-кейсы из ответа');
+
+    renderGenCases(generatedCases);
+    document.getElementById('gen-count-badge').textContent = generatedCases.length + ' кейсов';
+    toast(`✅ Сгенерировано ${generatedCases.length} тест-кейсов`, 'success');
   } catch (e) {
     toast('Ошибка генерации: ' + e.message, 'error');
+    document.getElementById('gen-result-body').innerHTML = `<div class="empty-result"><div class="empty-icon">⚠️</div><div style="font-size:15px;font-weight:600;color:var(--red);">Ошибка</div><div style="font-size:13px;color:var(--text3);max-width:300px;line-height:1.6;">${escH(e.message)}</div></div>`;
   } finally {
     btn.disabled = false;
     btnIcon.textContent = '🤖';
     btnText.textContent = 'Сгенерировать тест-кейсы';
+    document.getElementById('gen-stream-bar').style.display = 'none';
   }
-}
-
-// ── Real Claude API ──
-async function generateWithClaude(req, opts) {
-  const prompt = buildPrompt(req, opts);
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': AI_API_KEY,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
-  if (!res.ok) throw new Error('API Error: ' + res.status);
-  const data = await res.json();
-  const text = data.content[0].text;
-  return robustParseJSON(text);
-}
-
-function buildPrompt(req, opts) {
-  const fmtMap = {
-    standard: 'Стандартный: Предусловия, пронумерованные Шаги, Ожидаемый результат',
-    gherkin: 'BDD/Gherkin: Given / When / Then',
-    checklist: 'Чеклист: список проверок с ожидаемым результатом да/нет'
-  };
-  return `Ты опытный QA-инженер. Сгенерируй тест-кейсы по требованиям.
-
-ТРЕБОВАНИЯ: ${req}
-
-ИНСТРУКЦИИ:
-- Формат: ${fmtMap[opts.format]}
-- Язык: ${opts.lang === 'ru' ? 'Русский' : 'English'}
-- Максимум: ${opts.count} тест-кейсов
-- ${opts.negative ? 'Включи негативные сценарии' : 'Только позитивные'}
-- ${opts.boundary ? 'Включи граничные значения' : 'Без граничных значений'}
-
-Верни ТОЛЬКО валидный JSON массив без markdown-обёрток:
-[{"id":"TC-001","name":"...","preconditions":"...","steps":["Шаг 1","Шаг 2"],"expected":"...","priority":"High","type":"positive"}]`;
-}
-
-// ── Mock generation ──
-async function generateMock(req, opts) {
-  await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
-  const words = req.split(' ').slice(0, 6).join(' ');
-  const prios = ['High', 'Medium', 'Low'];
-  const types = opts.negative ? ['positive', 'positive', 'positive', 'negative', 'boundary'] : ['positive'];
-  const count = Math.min(opts.count, 12);
-  const cases = [];
-
-  const templates = [
-    { name: 'Успешное выполнение основного сценария', type: 'positive', prio: 'High',
-      steps: ['Открыть приложение и перейти на целевую страницу', 'Ввести корректные данные во все обязательные поля', 'Нажать кнопку подтверждения', 'Дождаться ответа системы'],
-      expected: 'Система успешно обрабатывает запрос и отображает результат' },
-    { name: 'Проверка валидации обязательных полей', type: 'negative', prio: 'High',
-      steps: ['Открыть форму', 'Оставить обязательные поля пустыми', 'Нажать кнопку отправки'],
-      expected: 'Система отображает ошибки валидации для каждого пустого обязательного поля' },
-    { name: 'Граничное значение — минимальная длина', type: 'boundary', prio: 'Medium',
-      steps: ['Открыть форму', 'Ввести значение ровно на 1 символ меньше минимального', 'Попытаться отправить форму'],
-      expected: 'Система отклоняет ввод с сообщением о минимальной длине' },
-    { name: 'Граничное значение — максимальная длина', type: 'boundary', prio: 'Medium',
-      steps: ['Открыть форму', 'Ввести максимально допустимое количество символов', 'Отправить форму'],
-      expected: 'Система принимает значение и обрабатывает его корректно' },
-    { name: 'Неверный формат данных', type: 'negative', prio: 'High',
-      steps: ['Открыть форму', 'Ввести данные в неверном формате (напр. текст вместо числа)', 'Нажать отправить'],
-      expected: 'Система показывает сообщение об ошибке формата данных' },
-    { name: 'Проверка работы при медленном соединении', type: 'positive', prio: 'Low',
-      steps: ['Включить эмуляцию медленного соединения (DevTools)', 'Выполнить основное действие', 'Ожидать завершения'],
-      expected: 'Система отображает индикатор загрузки и корректно завершает операцию' },
-    { name: 'Дублирование данных', type: 'negative', prio: 'Medium',
-      steps: ['Создать запись с уникальными данными', 'Попытаться создать вторую запись с теми же данными'],
-      expected: 'Система предотвращает дублирование и выдаёт соответствующую ошибку' },
-    { name: 'Специальные символы в полях ввода', type: 'negative', prio: 'Medium',
-      steps: ['Ввести специальные символы: <script>, --; DROP TABLE', 'Отправить форму'],
-      expected: 'Система корректно экранирует ввод, данные сохраняются безопасно' },
-    { name: 'Проверка прав доступа', type: 'positive', prio: 'High',
-      steps: ['Войти под пользователем с ограниченными правами', 'Попытаться выполнить действие, доступное только администратору'],
-      expected: 'Система запрещает действие и перенаправляет на страницу с ошибкой доступа' },
-    { name: 'Сессия — истечение времени', type: 'negative', prio: 'Medium',
-      steps: ['Войти в систему', 'Оставить сессию неактивной на 30+ минут', 'Попытаться выполнить действие'],
-      expected: 'Система завершает сессию и перенаправляет на страницу входа' },
-    { name: 'Отображение на мобильных устройствах', type: 'positive', prio: 'Low',
-      steps: ['Открыть страницу на мобильном устройстве (320px)', 'Проверить адаптивность интерфейса', 'Выполнить основной сценарий'],
-      expected: 'Интерфейс корректно адаптируется, функциональность сохраняется' },
-    { name: 'Параллельные запросы', type: 'positive', prio: 'Medium',
-      steps: ['Открыть 2 вкладки с одинаковой страницей', 'Выполнить одно и то же действие одновременно'],
-      expected: 'Система корректно обрабатывает оба запроса без конфликтов данных' },
-  ];
-
-  for (let i = 0; i < count; i++) {
-    const tpl = templates[i % templates.length];
-    const type = types[i % types.length];
-    cases.push({
-      id: 'TC-' + String(i + 1).padStart(3, '0'),
-      name: tpl.name,
-      preconditions: `Пользователь авторизован. Тестовая среда: ${words || 'функция'}`,
-      steps: tpl.steps,
-      expected: tpl.expected,
-      priority: prios[i % 3],
-      type: tpl.type
-    });
-  }
-
-  if (!opts.negative) return cases.filter(c => c.type === 'positive').slice(0, count);
-  return cases.slice(0, count);
 }
 
 function robustParseJSON(text) {
   text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
   try { return JSON.parse(text); } catch (_) {}
-  const start = text.indexOf('['), end = text.lastIndexOf(']');
-  if (start !== -1 && end > start) {
-    try { return JSON.parse(text.slice(start, end + 1)); } catch (_) {}
+  const start = text.indexOf('[');
+  if (start !== -1) {
+    const end = text.lastIndexOf(']');
+    if (end > start) {
+      try { return JSON.parse(text.slice(start, end + 1)); } catch (_) {}
+    }
+    const partial = text.slice(start);
+    const objects = [];
+    let depth = 0, inStr = false, escape = false, objStart = -1;
+    for (let i = 0; i < partial.length; i++) {
+      const ch = partial[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\' && inStr) { escape = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{') { if (depth === 0) objStart = i; depth++; }
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0 && objStart !== -1) {
+          try { objects.push(JSON.parse(partial.slice(objStart, i + 1))); } catch (_) {}
+          objStart = -1;
+        }
+      }
+    }
+    if (objects.length > 0) return objects;
   }
-  throw new Error('Не удалось разобрать JSON');
+  throw new Error('Не удалось разобрать JSON-ответ от модели');
 }
 
 function renderGenCases(cases) {
@@ -1325,6 +1283,24 @@ function renderChecklists() {
 
 // Init TMS on load
 renderChecklists();
+
+// ── Expose all onclick-referenced functions to global scope ──
+window.nav = nav;
+window.generateTestCases = generateTestCases;
+window.toggleTog = toggleTog;
+window.toggleTC = toggleTC;
+window.exportGenCSV = exportGenCSV;
+window.copyGenAll = copyGenAll;
+window.loadReleases = loadReleases;
+window.selectRelease = selectRelease;
+window.showIssueDetail = showIssueDetail;
+window.addStep = addStep;
+window.removeStep = removeStep;
+window.createChecklist = createChecklist;
+window.toggleCheckStep = toggleCheckStep;
+window.deleteChecklist = deleteChecklist;
+
+}); // end DOMContentLoaded
 </script>
 </body>
 </html>
